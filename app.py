@@ -1,141 +1,78 @@
-import React, { useState } from "react";
+import streamlit as st
+import random
+import pandas as pd
 
-export default function LeoGame() {
-  const [debris, setDebris] = useState(0.2);
-  const [score, setScore] = useState(0);
-  const [belief, setBelief] = useState(0.5); // probability opponent is hostile
-  const [log, setLog] = useState([]);
-  const [phase, setPhase] = useState("decision");
-  const [lastCollision, setLastCollision] = useState(false);
-  const [aiMode, setAiMode] = useState(false);
+# --- GAME ENGINE SETUP ---
+st.set_page_config(page_title="LEO Master: Real-State Sim", layout="wide")
 
-  function randomOpponentType() {
-    return Math.random() < 0.5 ? "cooperative" : "aggressive";
-  }
-
-  function playTurn(action) {
-    let opponentType = randomOpponentType();
-    let newDebris = debris;
-    let newScore = score;
-    let message = `You chose ${action}. Opponent is hidden.`;
-
-    // Subgame II: Bayesian Chicken
-    if (action === "persist") {
-      newScore += 1;
-      newDebris += 0.05;
-      if (opponentType === "aggressive") {
-        message += " Opponent also persists → escalation risk!";
-        if (Math.random() < 0.3) {
-          message += " ⚠️ Collision!";
-          newDebris += 0.3;
-          setLastCollision(true);
-          setPhase("attribution");
-        }
-      }
-    } else {
-      message += " You evaded (lost strategic value).";
-      newScore -= 0.5;
+if 'gs' not in st.session_state:
+    st.session_state.gs = {
+        'turn': 1, 'budget': 5000, 'debris_k': 0.28, 
+        'intel': 0, 'history': [], 'incidents': 0
     }
 
-    // Subgame I: Responsibility / risky ops
-    if (Math.random() < newDebris) {
-      message += " Random debris interaction occurred.";
-      newDebris += 0.1;
-    }
+gs = st.session_state.gs
 
-    // Belief update (simple heuristic)
-    let newBelief = belief;
-    if (action === "persist") newBelief += 0.1;
-    else newBelief -= 0.05;
-
-    setBelief(Math.min(Math.max(newBelief, 0), 1));
-    setDebris(Math.min(newDebris, 1));
-    setScore(newScore);
-    setLog([...log, message]);
-
-    if (!lastCollision) {
-      setPhase("decision");
-    }
-  }
-
-  function attributionDecision(verify) {
-    let message = "Attribution phase: ";
-    let probAttribution = verify === "high" ? 0.6 : 0.2;
-
-    if (aiMode) probAttribution *= 0.5; // AI reduces attribution
-
-    if (Math.random() < probAttribution) {
-      message += "Fault proven. Penalty applied.";
-      setScore(score - 2);
-    } else {
-      message += "Attribution failed. No liability.";
-    }
-
-    setLog((prev) => [...prev, message]);
-    setPhase("decision");
-    setLastCollision(false);
-  }
-
-  return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">🚀 LEO POSG Game</h1>
-
-      <div className="mb-4">
-        <p>Debris (K): {debris.toFixed(2)}</p>
-        <p>Score (Uᵢ): {score.toFixed(2)}</p>
-        <p>Belief opponent hostile (μ): {belief.toFixed(2)}</p>
-      </div>
-
-      <div className="mb-4">
-        <label className="mr-2">AI Acceleration</label>
-        <input
-          type="checkbox"
-          checked={aiMode}
-          onChange={() => setAiMode(!aiMode)}
-        />
-      </div>
-
-      {phase === "decision" && (
-        <div className="flex gap-4 mb-4">
-          <button
-            onClick={() => playTurn("persist")}
-            className="bg-red-500 text-white px-4 py-2 rounded"
-          >
-            Persist (Aggressive)
-          </button>
-
-          <button
-            onClick={() => playTurn("evade")}
-            className="bg-green-500 text-white px-4 py-2 rounded"
-          >
-            Evade (Safe)
-          </button>
-        </div>
-      )}
-
-      {phase === "attribution" && (
-        <div className="flex gap-4 mb-4">
-          <button
-            onClick={() => attributionDecision("high")}
-            className="bg-blue-500 text-white px-4 py-2 rounded"
-          >
-            High Verification (costly)
-          </button>
-
-          <button
-            onClick={() => attributionDecision("low")}
-            className="bg-gray-500 text-white px-4 py-2 rounded"
-          >
-            Low Verification
-          </button>
-        </div>
-      )}
-
-      <div className="bg-gray-100 p-3 rounded h-60 overflow-auto">
-        {log.map((entry, i) => (
-          <div key={i}>{entry}</div>
-        ))}
-      </div>
-    </div>
-  );
+# --- SATELLITE REGISTRY (Based on 2026 Data) ---
+# Hypothetical but grounded in current LEO trends
+targets = {
+    "Starlink-G4-92": {"type": "Commercial", "value": 200, "risk": 0.01, "desc": "High-speed broadband node."},
+    "USA-321 (Top Secret)": {"type": "Military", "value": 800, "risk": 0.15, "desc": "Electronic Intelligence (SIGINT) platform. High escalation risk."},
+    "Kosmos-2558": {"type": "Military", "value": 900, "risk": 0.18, "desc": "Inspector satellite. Likely equipped with kinetic interceptors."},
+    "Sentinel-6": {"type": "Civil/Science", "value": 100, "risk": 0.05, "desc": "Ocean topography mission. Low strategic value."},
+    "Yaogan-35": {"type": "Military", "value": 750, "risk": 0.12, "desc": "Remote sensing for maritime surveillance."}
 }
+
+# --- HEADER ---
+st.title("🛰️ LEO MASTER: REAL-STATE OPERATOR")
+cols = st.columns(3)
+cols[0].metric("Operational Budget", f"${gs['budget']}")
+cols[1].metric("LEO Congestion (K)", f"{gs['debris_k']:.2%}")
+cols[2].metric("Strategic Intel", gs['intel'])
+st.divider()
+
+# --- THE GAME LOOP: TARGET ACQUISITION ---
+st.header(f"📍 Turn {gs['turn']}: Select Orbital Target")
+
+target_id = st.selectbox("Identify Satellite in Sector", list(targets.keys()))
+target_info = targets[target_id]
+
+# UI Visual Feedback for Military Assets
+if target_info['type'] == "Military":
+    st.error(f"⚠️ **CLASSIFIED ASSET DETECTED:** {target_info['desc']}")
+else:
+    st.info(f"ℹ️ **UNCLASSIFIED ASSET:** {target_info['desc']}")
+
+# --- NESTED CHOICES ---
+col_choice, col_shield = st.columns(2)
+
+with col_choice:
+    st.subheader("Level 1: Choose Action")
+    action = st.radio("Maneuver Vector", 
+        ["Passive Tracking (Safe)", "Close Proximity Inspection (Risky)", "Signal Jamming (Hostile)"])
+
+with col_shield:
+    st.subheader("Level 2: Signal Protocol")
+    telemetry = st.radio("Encryption", 
+        ["Open Source (Auditable)", "Stealth Burst (Ambiguous)"],
+        help="Stealth Burst creates an Attribution Void, preventing military retaliation.")
+
+# --- EXECUTION ---
+if st.button("🚀 INITIATE MANEUVER", type="primary"):
+    gs['turn'] += 1
+    
+    # 1. Calculate Results
+    # Military targets give more Intel but cost more Risk
+    intel_gain = (target_info['value'] // 100) if action != "Passive Tracking (Safe)" else 1
+    if action == "Signal Jamming (Hostile)": intel_gain *= 2
+    
+    risk_factor = target_info['risk']
+    if action == "Close Proximity Inspection (Risky)": risk_factor *= 2
+    if action == "Signal Jamming (Hostile)": risk_factor *= 4
+    
+    # 2. The Attribution Void Math
+    is_stealth = (telemetry == "Stealth Burst (Ambiguous)")
+    detection_prob = 0.05 if is_stealth else 0.80
+    
+    # 3. Apply Updates
+    gs['intel'] += intel_gain
