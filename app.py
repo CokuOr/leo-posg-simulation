@@ -1,126 +1,131 @@
 import streamlit as st
-import numpy as np
+import random
 import pandas as pd
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="LEO Master POSG", layout="centered")
+# --- UI CONFIGURATION ---
+st.set_page_config(page_title="LEO Command: The POSG Game", layout="wide")
 
-# --- UI HEADER ---
-st.title("🛰️ The LEO Game: Strategic Defection Simulator")
-st.markdown("### Interactive Structural Misalignment Model")
+# --- CUSTOM CSS ---
+st.markdown("""
+    <style>
+    .stMetric { background-color: #0e1117; border: 1px solid #2e7d32; padding: 10px; border-radius: 10px; }
+    .stAlert { border-radius: 15px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- INITIALIZE GAME STATE ---
+if 'debris' not in st.session_state:
+    st.session_state.update({
+        'debris': 0.15, 'money': 2000, 'steps': 0, 'history': [],
+        'logs': ["🛰️ System Online. Welcome, Commander."],
+        'legal_heat': 0, 'tech_level': 1
+    })
+
+# --- HEADER ---
+st.title("🌌 LEO COMMAND: THE SOVEREIGNTY TRAP")
+st.markdown("### *Can you dominate the orbit before the Kessler Syndrome locks you out?*")
 st.divider()
 
-# --- INITIALIZE STATE ---
-if 'debris_k' not in st.session_state:
-    st.session_state.debris_k = 0.18
-    st.session_state.logs = []
-    st.session_state.game_over = False
-
-# --- PLAYERS & SCENARIOS (Hypothetical Data) ---
-st.sidebar.header("🕹️ Decision Matrix")
-
-# A. SELECT YOUR PLAYER (Who you are)
-st.sidebar.subheader("1. Select Your Player Type")
-player_type = st.sidebar.selectbox("Player Type", 
-    ["Legacy Commsat (Large, Stable)", 
-     "Mega-Constellation (AI-Optimized)", 
-     "Military SSA (Small, Fast)"])
-
-# B. SELECT THE SCENARIO (What is happening)
-st.sidebar.subheader("2. Select Your Scenario")
-scenario = st.sidebar.selectbox("Scenario", 
-    ["Routine Station-Keeping", 
-     "Conjunction Alert (5% Probability)", 
-     "Proximity Operation (Adversary Probe)",
-     "Debris Cloud Navigation (High Risk)"])
-
-# C. SELECT YOUR ACTIONS (The POSG variables)
-st.sidebar.subheader("3. Select Your Action Vector (a)")
-a_s = st.sidebar.radio("Strategic Action (a_s)", ["Evade (Cooperate)", "Persist (Defect)"], help="Evading costs profit; persisting takes the slot.")
-sigma = st.sidebar.radio("Signal Transparency (σ)", ["Public & Clear", "Ambiguous/Hidden"], help="Hidden signals block 'Fault' assignment but raise escalation risk.")
-
-# --- CORE LOGIC: POSG ENGINE ---
-def run_simulation():
-    # 1. Operational Value (V)
-    # Persisting gives higher profit (1.5) but evading only 0.5.
-    base_v = 1.5 if a_s == "Persist (Defect)" else 0.5
+# --- SIDEBAR: COMMAND CENTER ---
+with st.sidebar:
+    st.header("🎮 Player Profile")
+    role = st.selectbox("Choose Your Faction", 
+        ["Venture Starlink (Fast/Risky)", "State Aegis (Heavy/Defensive)", "Balkan Space Agency (Scrappy/Efficient)"])
     
-    # 2. Probability of Attribution (Pa) - THE attribution void
-    # Pa is LOW if signal is Ambiguous, suppressing liability.
-    Pa = 0.10 if sigma == "Ambiguous/Hidden" else 0.80
+    st.subheader("🛠️ Tech Upgrades")
+    if st.button("Upgrade AI Sensors ($800)"):
+        if st.session_state.money >= 800:
+            st.session_state.tech_level += 1
+            st.session_state.money -= 800
+            st.success("Sensors Upgraded! Attribution risk reduced.")
     
-    # 3. Information Tax (I)
-    # Legacy players pay more for compliance.
-    I = 0.4 if player_type == "Legacy Commsat (Large, Stable)" else 0.1
+    st.divider()
+    st.subheader("🕹️ Tactical Action")
+    action = st.radio("Maneuver Style", ["Quiet & Cooperative", "Aggressive Persistence", "Shadow Maneuver"])
+    signal = st.radio("Signal Protocol", ["Full Transparency", "Encoded/Ambiguous"])
     
-    # 4. Payoff Calculation: R_i = V - K - (Pa * Liability) - I
-    current_payoff = base_v - st.session_state.debris_k - (Pa * 1.0) - I
-    
-    # 5. Transition: Debris growth based on risk
-    # Scenario and Action together determine debris growth.
-    base_growth = {"Routine Station-Keeping": 0.02,
-                   "Conjunction Alert (5% Probability)": 0.08,
-                   "Proximity Operation (Adversary Probe)": 0.12,
-                   "Debris Cloud Navigation (High Risk)": 0.20}[scenario]
-    
-    risk_multiplier = 2.0 if a_s == "Persist (Defect)" else 1.0
-    actual_growth = base_growth * risk_multiplier
-    
-    # Update State
-    st.session_state.debris_k = min(1.0, st.session_state.debris_k + actual_growth)
-    
-    # Narrative Builder
-    attribution_void_active = True if sigma == "Ambiguous/Hidden" else False
-    void_status = "⚠️ ATTRIBUTION VOID: Liability suppressed." if attribution_void_active else "✅ AUDITABLE: Liability enforceable."
-    
-    st.session_state.logs.insert(0, f"**Step {len(st.session_state.logs)+1}**:")
-    st.session_state.logs.insert(0, f"Player: {player_type} | Scenario: {scenario} | Action: {a_s}")
-    st.session_state.logs.insert(0, f"Result: Profit=${current_payoff:.2f} | Debris K={st.session_state.debris_k:.2f} | {void_status}")
-    st.session_state.logs.insert(0, st.session_state.debris_k) # For chart
+    execute = st.button("🚀 EXECUTE ORBITAL TURN", type="primary")
 
-# --- EXECUTION BUTTON ---
-if st.sidebar.button("Execute Step"):
-    if not st.session_state.game_over:
-        run_simulation()
-
-# --- MAIN DASHBOARD ---
-c1, c2 = st.columns(2)
-
-with c1:
-    st.subheader("📈 System Evolution")
-    if st.session_state.logs:
-        # Get debris history from logs
-        debris_history = [log for log in st.session_state.logs if isinstance(log, float)]
-        st.line_chart(pd.DataFrame(debris_history, columns=["Debris K"]))
+# --- THE GAME ENGINE ---
+if execute:
+    st.session_state.steps += 1
+    
+    # 1. Base Logic
+    profit = 1200 if action == "Aggressive Persistence" else 400
+    if action == "Shadow Maneuver": profit = 800
+    
+    # 2. Random Event Generator (The "Fun" Part)
+    events = [
+        {"name": "Solar Flare", "impact": 0.05, "msg": "☀️ Solar Flare! Sensors are noisy. Attribution Void widened."},
+        {"name": "Micrometeoroid", "impact": 0.08, "msg": "☄️ Micrometeoroid strike! Debris cloud expanding."},
+        {"name": "Cyber Interference", "impact": 0.02, "msg": "👾 Cyber attack! Signal protocols corrupted."},
+        {"name": "None", "impact": 0.0, "msg": "🌌 Space is quiet... for now."}
+    ]
+    event = random.choice(events)
+    
+    # 3. Payoff & Risk Math
+    pa = 0.05 if signal == "Encoded/Ambiguous" else 0.85
+    risk_factor = 2.5 if action == "Aggressive Persistence" else 1.0
+    
+    # 4. Updates
+    st.session_state.money += profit
+    st.session_state.debris = min(1.0, st.session_state.debris + (event['impact'] * risk_multiplier if 'risk_multiplier' in locals() else 0.05 * risk_factor))
+    
+    # 5. Legal Heat Mechanic
+    if pa > 0.5 and action == "Aggressive Persistence":
+        st.session_state.legal_heat += 20
+        penalty_msg = "⚖️ International lawyers are watching! Legal Heat +20."
     else:
-        st.info("Awaiting first maneuver...")
+        st.session_state.legal_heat = max(0, st.session_state.legal_heat - 5)
+        penalty_msg = "🕵️ You stayed under the radar."
 
-with c2:
-    st.subheader("⚠️ Legal/Physical Risk")
-    st.metric("Debris Density (K)", f"{st.session_state.debris_k:.2f}")
-    
-    if st.session_state.debris_k >= 0.8:
-        st.session_state.game_over = True
-        st.error("🚨 KESSLER THRESHOLD REACHED: Orbital domain collapse. GAME OVER.")
-        if st.button("Reset Simulation"):
-            st.session_state.clear()
-            st.rerun()
+    st.session_state.logs.insert(0, f"**Turn {st.session_state.steps}**: {event['msg']} {penalty_msg}")
 
-# --- MISSION LOGS & LEGAL ANALYSIS ---
+# --- VISUAL DASHBOARD ---
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Orbital Debris (K)", f"{st.session_state.debris:.1%}")
+c2.metric("Treasury ($)", f"{st.session_state.money}")
+c3.metric("Legal Heat", f"{st.session_state.legal_heat}%")
+c4.metric("Tech Level", f"Lv.{st.session_state.tech_level}")
+
+# --- INTERACTIVE VISUALS ---
 st.divider()
-st.subheader("📜 Adjudication Record (The 'Sovereignty Trap')")
-with st.expander("Show the Adjudication Logic"):
-    st.write("""
-    **If you choose [Persist] + [Ambiguous]:**
-    * **The Operational Value (V):** Is maximized ($1.5). You took the slot.
-    * **The Legal Barrier (Pa):** Probability of Attribution (Pa) drops to 10%. 
-    * **Result:** No State can assign Fault ($f_i$) under the Liability Convention. You win the slot and neutralize the law. This is the **'Non-Cooperative Equilibrium'.**
-    
-    **If you choose [Evade] + [Clear]:**
-    * **The Operational Value (V):** Is low ($0.5). You yielded.
-    * **The Legal Trap:** Since you are transparent, if a stochastic event (e.g., solar flare) causes a collision anyway, *you* are easily identified and held liable. You are 'The Sucker'.
-    """)
+st.subheader("📊 Strategic Analysis")
+col_chart, col_logs = st.columns([2, 1])
 
-# Display logs (skipping the debris floats)
-for log in [l for l in st.session_state.logs if isinstance(l, str)][:9]:
-    st.text(log) 
+with col_chart:
+    if st.session_state.steps > 0:
+        chart_data = pd.DataFrame({'Debris': [0.15] + [random.random()*0.1 for _ in range(st.session_state.steps)]}) # Placeholder for real plot
+        st.area_chart(chart_data)
+    else:
+        st.info("Launch a maneuver to see the orbital trend.")
+
+with col_logs:
+    st.subheader("📜 Comms Log")
+    for log in st.session_state.logs[:5]:
+        st.write(log)
+
+# --- THE "SCENARIO" POP-UPS ---
+if st.session_state.legal_heat >= 60:
+    st.warning("⚠️ **TRIBUNAL ALERT:** A formal claim has been filed against you! Use 'Encoded Signals' to hide intent or pay a $1000 settlement.")
+    if st.button("Pay Settlement"):
+        st.session_state.money -= 1000
+        st.session_state.legal_heat = 0
+
+if st.session_state.debris >= 0.85:
+    st.error("💥 **KESSLER COLLAPSE:** The debris has reached critical mass. LEO is closed. Game Over.")
+    if st.button("Restart Mission"):
+        st.session_state.clear()
+        st.rerun()
+
+# --- WHY THIS HAPPENED (The Thesis Bit) ---
+with st.expander("📚 Why did I win/lose? (The POSG Theory)"):
+    st.write("""
+    In this game, **Ambiguous Signals** are your 'Shield'. By making your intent unobservable, 
+    you exploit the **Attribution Void**. Even if you cause a collision (High K), 
+    the legal system cannot prove 'Fault' because they can't distinguish your maneuver from 
+    environmental noise (the Solar Flare event). 
+    
+    This is the **Sovereignty Trap**: Rational players choose the 'Shadow Maneuver' to get rich, 
+    leaving the world to deal with the debris.
+    """)
