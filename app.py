@@ -2,77 +2,121 @@ import streamlit as st
 import random
 import pandas as pd
 
-# --- GAME ENGINE SETUP ---
-st.set_page_config(page_title="LEO Master: Real-State Sim", layout="wide")
+# --- 1. UX: PAGE CONFIG & DARK THEME ---
+st.set_page_config(page_title="LEO MASTER: COMMAND", layout="wide", initial_sidebar_state="expanded")
 
+# Custom CSS for a "Cyber/Military" Look
+st.markdown("""
+    <style>
+    .main { background-color: #0b0d14; }
+    .stMetric { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 15px; }
+    div[data-testid="stExpander"] { border: 1px solid #30363d; background-color: #0d1117; }
+    .stButton>button { width: 100%; background-color: #238636; color: white; border: none; font-weight: bold; height: 3em; }
+    .stButton>button:hover { background-color: #2ea043; border: 1px solid white; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. GAME STATE ---
 if 'gs' not in st.session_state:
     st.session_state.gs = {
-        'turn': 1, 'budget': 5000, 'debris_k': 0.28, 
-        'intel': 0, 'history': [], 'incidents': 0
+        'turn': 1, 'budget': 5000, 'debris': 0.32, 'intel': 0, 
+        'history': [], 'last_outcome': "Systems Ready. Awaiting Input."
     }
-
 gs = st.session_state.gs
 
-# --- SATELLITE REGISTRY (Based on 2026 Data) ---
-# Hypothetical but grounded in current LEO trends
-targets = {
-    "Starlink-G4-92": {"type": "Commercial", "value": 200, "risk": 0.01, "desc": "High-speed broadband node."},
-    "USA-321 (Top Secret)": {"type": "Military", "value": 800, "risk": 0.15, "desc": "Electronic Intelligence (SIGINT) platform. High escalation risk."},
-    "Kosmos-2558": {"type": "Military", "value": 900, "risk": 0.18, "desc": "Inspector satellite. Likely equipped with kinetic interceptors."},
-    "Sentinel-6": {"type": "Civil/Science", "value": 100, "risk": 0.05, "desc": "Ocean topography mission. Low strategic value."},
-    "Yaogan-35": {"type": "Military", "value": 750, "risk": 0.12, "desc": "Remote sensing for maritime surveillance."}
-}
-
-# --- HEADER ---
-st.title("🛰️ LEO MASTER: REAL-STATE OPERATOR")
-cols = st.columns(3)
-cols[0].metric("Operational Budget", f"${gs['budget']}")
-cols[1].metric("LEO Congestion (K)", f"{gs['debris_k']:.2%}")
-cols[2].metric("Strategic Intel", gs['intel'])
+# --- 3. UI: TOP NAVIGATION (The "HUD") ---
+st.title("🛰️ LEO COMMAND | Tactical Interface")
+h1, h2, h3, h4 = st.columns(4)
+h1.metric("Orbital Density (K)", f"{gs['debris']:.2%}", delta="CRITICAL" if gs['debris'] > 0.7 else None)
+h2.metric("Treasury", f"${gs['budget']:,}")
+h3.metric("Intel Level", f"{gs['intel']} XP")
+h4.metric("Cycle", f"T-{gs['turn']}")
 st.divider()
 
-# --- THE GAME LOOP: TARGET ACQUISITION ---
-st.header(f"📍 Turn {gs['turn']}: Select Orbital Target")
+# --- 4. UX: THE NESTED CHOICE FLOW ---
+# We use two main columns: THE ACTION and THE FEEDBACK
+col_action, col_visual = st.columns([3, 2], gap="large")
 
-target_id = st.selectbox("Identify Satellite in Sector", list(targets.keys()))
-target_info = targets[target_id]
-
-# UI Visual Feedback for Military Assets
-if target_info['type'] == "Military":
-    st.error(f"⚠️ **CLASSIFIED ASSET DETECTED:** {target_info['desc']}")
-else:
-    st.info(f"ℹ️ **UNCLASSIFIED ASSET:** {target_info['desc']}")
-
-# --- NESTED CHOICES ---
-col_choice, col_shield = st.columns(2)
-
-with col_choice:
-    st.subheader("Level 1: Choose Action")
-    action = st.radio("Maneuver Vector", 
-        ["Passive Tracking (Safe)", "Close Proximity Inspection (Risky)", "Signal Jamming (Hostile)"])
-
-with col_shield:
-    st.subheader("Level 2: Signal Protocol")
-    telemetry = st.radio("Encryption", 
-        ["Open Source (Auditable)", "Stealth Burst (Ambiguous)"],
-        help="Stealth Burst creates an Attribution Void, preventing military retaliation.")
-
-# --- EXECUTION ---
-if st.button("🚀 INITIATE MANEUVER", type="primary"):
-    gs['turn'] += 1
+with col_action:
+    st.subheader("🛠️ Deployment Sequence")
     
-    # 1. Calculate Results
-    # Military targets give more Intel but cost more Risk
-    intel_gain = (target_info['value'] // 100) if action != "Passive Tracking (Safe)" else 1
-    if action == "Signal Jamming (Hostile)": intel_gain *= 2
+    # LEVEL 1: OBJECTIVE
+    mission = st.selectbox("SEQUENCE 01: Select Strategic Objective", 
+        ["Commercial Constellation Expansion", "Classified Military Reconnaissance", "Science & Climate Monitoring"])
     
-    risk_factor = target_info['risk']
-    if action == "Close Proximity Inspection (Risky)": risk_factor *= 2
-    if action == "Signal Jamming (Hostile)": risk_factor *= 4
+    # LEVEL 2: EXECUTION (Changes based on Level 1)
+    st.write("")
+    if mission == "Commercial Constellation Expansion":
+        st.info("Commercial targets focus on revenue. High volume, low precision.")
+        strategy = st.radio("SEQUENCE 02: Launch Profile", ["Vanguard (High Density/Low Cost)", "Sustainable (Low Density/High Cost)"])
+    elif mission == "Classified Military Reconnaissance":
+        st.error("WARNING: Interacting with Military assets triggers high Legal Heat.")
+        strategy = st.radio("SEQUENCE 02: Approach Vector", ["Distant Tracking", "Aggressive RPO (Proximity)"])
+    else:
+        st.success("Scientific missions reduce global Debris but generate no Profit.")
+        strategy = st.radio("SEQUENCE 02: Mission Goal", ["Atmospheric Scan", "Active Debris Cleanup"])
+
+    # LEVEL 3: SIGNAL PROTOCOL (The POSG Attribution Void)
+    st.write("")
+    telemetry = st.select_slider("SEQUENCE 03: Telemetry Protocol", 
+        options=["Open (Auditable)", "Encrypted", "Quantum Shadow (Ambiguous)"],
+        help="Ambiguous signals mask your 'Fault' from International Courts.")
+
+    # THE TRIGGER
+    if st.button("INITIATE MANEUVER"):
+        # Logic - Simplified for brevity
+        gs['turn'] += 1
+        profit = 1200 if "Vanguard" in strategy or "Aggressive" in strategy else 300
+        cost = 800 if "Sustainable" in strategy or "Cleanup" in strategy else 100
+        
+        # Attribution Void Math
+        pa = 0.05 if telemetry == "Quantum Shadow (Ambiguous)" else 0.90
+        risk = 0.10 if "Aggressive" in strategy or "Vanguard" in strategy else 0.02
+        if "Cleanup" in strategy: risk = -0.05
+        
+        # Update Stats
+        gs['budget'] += (profit - cost)
+        gs['debris'] = max(0.05, min(1.0, gs['debris'] + risk))
+        
+        # Result Narrative
+        if pa < 0.1 and risk > 0.05:
+            gs['last_outcome'] = "👤 GHOST MOVE: Collision risk detected, but the Attribution Void prevented identification. No fines issued."
+        elif pa > 0.5 and risk > 0.05:
+            fine = 1500
+            gs['budget'] -= fine
+            gs['last_outcome'] = f"⚖️ LEGAL BREACH: Your transparent signal allowed a court to assign Fault. Fine: ${fine}."
+        else:
+            gs['last_outcome'] = "✅ MISSION SUCCESS: Maneuver completed within legal parameters."
+        
+        gs['history'].insert(0, f"T-{gs['turn']-1}: {gs['last_outcome']}")
+
+with col_visual:
+    st.subheader("📡 Real-Time Situational Awareness")
     
-    # 2. The Attribution Void Math
-    is_stealth = (telemetry == "Stealth Burst (Ambiguous)")
-    detection_prob = 0.05 if is_stealth else 0.80
+    # UX: STATUS MESSAGE BOX
+    st.code(gs['last_outcome'], language="markdown")
     
-    # 3. Apply Updates
-    gs['intel'] += intel_gain
+    # UX: THE "REAL-WORLD" CHART
+    chart_data = pd.DataFrame([random.uniform(gs['debris']-0.05, gs['debris']+0.05) for _ in range(20)], columns=["Traffic Density"])
+    st.area_chart(chart_data, use_container_width=True)
+    
+    # UX: RECENT HISTORY LOG
+    with st.expander("Mission Logs", expanded=True):
+        for log in gs['history'][:5]:
+            st.caption(log)
+
+# --- 5. THEORY: THE "SOVEREIGNTY TRAP" ---
+st.divider()
+with st.expander("📚 THEORY OVERVIEW: Why this UI reflects your Thesis"):
+    st.write("""
+    The UI is designed to force **Choice-Over-Choice**. 
+    
+    1. **Asymmetric Information:** The 'Quantum Shadow' protocol represents the **Attribution Void**. You chose to hide your 'Fault' ($f$), which is the only way to play aggressively around Military assets.
+    2. **Stochastic Transition:** The 'Traffic Density' chart shows how the orbit ($K$) evolves based on your private moves.
+    3. **The Trap:** Notice that your Budget grows fastest when you use 'Shadow' protocols. The game (and LEO) rewards defection over cooperation.
+    """)
+
+# --- 6. GAME OVER ---
+if gs['debris'] >= 0.90:
+    st.error("### 💥 KESSLER SYNDROME INITIATED. LEO IS CLOSED.")
+    if st.button("RESET SYSTEM"): st.session_state.clear(); st.rerun()
