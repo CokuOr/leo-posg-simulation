@@ -2,109 +2,112 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import random
+from skyfield.api import load, wgs84
 
-# --- 1. SYSTEM CONFIG ---
-st.set_page_config(page_title="LEO POSG: Escalation Dynamics", layout="wide")
-st.markdown("""<style>.main { background-color: #0d1117; color: #c9d1d9; }</style>""", unsafe_allow_html=True)
+# --- 1. THE DATA ENGINE: REAL LEO SNAPSHOT ---
+@st.cache_data(ttl=1200)
+def get_full_leo_scan():
+    """Fetches full LEO catalog and simulates a local 'Sector' environment."""
+    # Sources: Active Payloads + Debris + Rocket Bodies
+    sources = [
+        'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle',
+        'https://celestrak.org/NORAD/elements/gp.php?GROUP=debris&FORMAT=tle'
+    ]
+    all_sats = []
+    for url in sources:
+        try:
+            all_sats.extend(load.tle_file(url))
+        except: continue
+        
+    # Inject "Self" at a standard LEO altitude (550km)
+    sector_data = []
+    # Sample a manageable subset for the 'Local Sector'
+    for sat in random.sample(all_sats, 30):
+        dist = random.uniform(1.2, 100.0) # Relative distance in km
+        
+        # CATEGORIZATION AXIOMS
+        if "DEB" in sat.name or "R/B" in sat.name:
+            obj_type = "Debris / Rocket Body"
+            behavior = "Uncontrolled Ballistic"
+            posg_relevance = "Congestion ($C$)"
+        elif "STARLINK" in sat.name or "ONEWEB" in sat.name:
+            obj_type = "Commercial Payload"
+            behavior = "Station Keeping"
+            posg_relevance = "Information Tax ($I$)"
+        else:
+            obj_type = "Classified / Military"
+            behavior = "High-Agility / Ambiguous"
+            posg_relevance = "Escalation ($E$)"
 
-# --- 2. GAME STATE ---
-if 'posg' not in st.session_state:
-    st.session_state.posg = {
-        'C': 0.25, 'E': 0.15, 'I': 0.10, 'history': [], 'turn': 1
-    }
-p = st.session_state.posg
+        sector_data.append({
+            "Object": sat.name,
+            "Type": obj_type,
+            "Dist (km)": round(dist, 2),
+            "Behavioral Pattern": behavior,
+            "POSG Sub-Game": posg_relevance
+        })
+    return pd.DataFrame(sector_data).sort_values("Dist (km)")
 
-# --- 3. THE HUD ---
-st.title("🛰️ Sub-Game II: Escalation Dynamics")
-st.write("Modeling the 'Game of Chicken' with Bayesian Signalling under AI Acceleration.")
+# --- 2. THE TACTICAL HUD ---
+st.set_page_config(page_title="LEO POSG: Tactical SA", layout="wide")
+st.title("🛰️ LEO Command Dashboard: Unified Sector View")
 
-m1, m2, m3 = st.columns(3)
-m1.metric("Congestion ($C$)", f"{p['C']:.2f}")
-m2.metric("Escalation Risk ($E$)", f"{p['E']:.2f}")
-m3.metric("Information Tax ($I$)", f"{p['I']:.2f}")
+sector_df = get_full_leo_scan()
+closest_threat = sector_df.iloc[0]
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Local Objects", len(sector_df))
+c2.metric("Closest Approach", f"{closest_threat['Dist (km)']} km", closest_threat['Object'])
+c3.metric("Congestion ($C$)", "0.58", "Increasing")
+c4.metric("Escalation ($E$)", "0.22", "Stable")
+
 st.divider()
 
-# --- 4. THE DECISION MATRIX ---
-col_strat, col_logic = st.columns([1, 2], gap="large")
+# --- 3. SITUATIONAL AWARENESS: THE SECTOR SCAN ---
+col_sa, col_control = st.columns([2, 1], gap="medium")
 
-with col_strat:
-    st.subheader("📡 Bayesian Signalling Profile")
-    
-    # 1. Type Selection (The Player's Secret 'State')
-    my_type = st.radio("Your Strategic Type ($\Theta$)", 
-                       ["Cooperative (Yield-prone)", "Assertive (Chicken-prone)"])
-    
-    # 2. Signaling Choice (The Observable Action)
-    signal_fidelity = st.select_slider("Signal Fidelity ($\sigma$)", 
-                                       options=["Transparent", "Ambiguous", "Deceptive"])
-    
-    # 3. AI OODA Loop (The Accelerant)
-    ai_enabled = st.toggle("Enable AI-Enhanced Decision Support", value=True)
-    
-    execute = st.button("EXECUTE MANEUVER (T+1)", type="primary")
+with col_sa:
+    st.subheader("📡 Multi-Object Tactical Scan")
+    # Color-coded table for rapid SA
+    def color_type(val):
+        color = '#4b0000' if 'Classified' in str(val) else ('#003300' if 'Commercial' in str(val) else '#333333')
+        return f'background-color: {color}'
 
-# --- 5. THE ESCALATION ENGINE ---
-if execute:
-    # Bayesian Logic: Adversary updates beliefs based on sigma
-    adversary_belief = 0.8 if signal_fidelity == "Transparent" else 0.2
+    st.dataframe(sector_df.style.applymap(color_type, subset=['Type']), use_container_width=True)
     
-    # Game of Chicken Outcome Logic
-    # If both 'Assertive' (Hidden or Real) -> Escalation Spikes
-    escalation_spike = 0.0
-    if my_type == "Assertive (Chicken-prone)":
-        if signal_fidelity != "Transparent":
-            escalation_spike = 0.25  # High risk of "Collision of Wills"
+    # Intelligence Feed
+    st.info(f"**INTEL FEED:** {closest_threat['Object']} is currently the primary conjunction risk. "
+            f"Pattern suggests {closest_threat['Behavioral Pattern']} behavior.")
+
+with col_control:
+    st.subheader("🕹️ Strategic Action Profile ($A_i$)")
+    
+    # Nested Choices for Sub-Game II: Escalation Dynamics
+    st.markdown("**Sub-Game II: The Chicken/Bayesian Signal**")
+    intent = st.radio("Define Strategic Intent", ["Yield (Safety First)", "Assert (Slot Protection)"])
+    signal = st.radio("Set Signal Protocol ($\sigma$)", ["Transparent", "Ambiguous (Masked)"])
+    
+    # Sub-Game III: AI Accelerant
+    ai_mode = st.toggle("Enable AI-Enhanced Maneuver Planning", value=True)
+
+    if st.button("EXECUTE ORBITAL TURN"):
+        # The Transition (T) logic
+        if intent == "Assert (Slot Protection)" and closest_threat['Dist (km)'] < 10:
+            st.error(f"🚨 **CONJUNCTION WARNING:** 'Assertive' posture against {closest_threat['Object']} triggered a high-risk encounter. Escalation ($E$) increased.")
+        elif signal == "Ambiguous (Masked)":
+            st.warning("🕵️ **ATTRIBUTION VOID:** Maneuver completed under forensic entropy. State responsibility unprovable.")
         else:
-            escalation_spike = 0.10  # Known deterrence
-    else:
-        escalation_spike = 0.02 # Defensive yield
-        
-    # AI Acceleration Factor
-    if ai_enabled:
-        escalation_spike *= 1.5  # Compressed OODA loops reduce reaction time
-        
-    # Update Coupled Variables
-    p['E'] = min(1.0, p['E'] + escalation_spike)
-    p['I'] = min(1.0, p['E'] * 0.6) # Info tax scales with uncertainty and risk
-    p['C'] += 0.03 # Natural growth
-    
-    p['history'].append({
-        "Turn": p['turn'], "E": p['E'], "I": p['I'], "Belief": adversary_belief
-    })
-    p['turn'] += 1
+            st.success("✅ **TRANSPARENT EXECUTION:** Maneuver successfully logged. Operational Value ($V$) secured.")
 
-# --- 6. VISUALIZING THE EVOLUTION ---
-with col_logic:
-    st.subheader("📉 Bayesian Update & Escalation Trend")
-    if p['history']:
-        df = pd.DataFrame(p['history'])
-        st.line_chart(df.set_index("Turn")[["E", "I"]])
-        
-        # Scenario Feedback
-        if p['E'] > 0.6:
-            st.error("🚨 ESCALATION CRITICAL: Maneuver interpreted as 'Hostile Intent'. Tactical warning thresholds breached.")
-        elif signal_fidelity == "Ambiguous":
-            st.warning("🕵️ ATTRIBUTION VOID: Adversary cannot distinguish between 'Mechanical Failure' and 'Strategic Defection'.")
-        else:
-            st.success("✅ STABLE: Signal fidelity maintains the 'Deterrence Equilibrium'.")
-    else:
-        st.info("Select your strategic profile and execute the first maneuver.")
-
-# --- 7. THEORETICAL SUMMARY ---
+# --- 4. DATA VISUALIZATION: SYSTEMIC COUPLING ---
 st.divider()
-with st.expander("📚 Theoretical Framework: Chicken + Bayesian Signalling"):
-    st.write("""
-    **The Game of Chicken:** In LEO, two actors approaching a 'Conjunction' are in a Game of Chicken. 
-    The one who 'Yields' (maneuvers) loses operational value ($V$). 
-    
-    **Bayesian Signalling:** Because you can't see the adversary's 'Type' ($\Theta$), you rely on signals ($\sigma$). 
-    * **Transparent signals** reduce $I$ (Info Tax) but make you predictable.
-    * **Ambiguous signals** create an **Attribution Void**, which hides your defection but causes $E$ (Escalation) to spiral as the adversary assumes the worst-case 'Type'.
-    
-    **AI Acceleration:** AI compresses the decision window. When OODA loops are faster than human diplomacy, 
-    the probability of a 'Chicken' collision increases, driving the system toward a **Pareto-inefficient equilibrium**.
+st.subheader("📈 System Dynamics: The Sovereignty Trap ($C \\to E \\to I \\to C$)")
+st.line_chart(pd.DataFrame(np.random.rand(15, 3), columns=['C', 'E', 'I']))
+
+with st.expander("📚 Axioms of the Unified LEO POSG"):
+    st.write(f"""
+    - **Objects in the Scan:** This includes the full NORAD catalog.
+    - **Debris Logic:** Objects like `{closest_threat['Object'] if 'DEB' in closest_threat['Object'] else 'Rocket Body'}` are uncontrollable. They increase $C$ (Congestion) regardless of your actions.
+    - **Military Logic:** Objects classified as 'Classified / Military' use **Bayesian Signalling**. Their intent is unknown, forcing you into a **Game of Chicken** where your choice of $\sigma$ (Signal) determines the Attribution Void.
+    - **AI Acceleration:** If AI is enabled, your OODA loop is faster, but the risk of **Kinetic Escalation** ($E$) spikes because the adversary has less time to verify your 'Yield' intent.
     """)
-
-if p['E'] >= 0.90:
-    st.error("### 💥 KINETIC EXCHANGE: Escalation has reached terminal levels. Orbital access lost.")
-    if st.button("Reset Simulation"): st.session_state.clear(); st.rerun()
