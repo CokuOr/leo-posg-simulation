@@ -1,122 +1,110 @@
 import streamlit as st
-import random
 import pandas as pd
+import numpy as np
+import random
 
-# --- 1. UX: PAGE CONFIG & DARK THEME ---
-st.set_page_config(page_title="LEO MASTER: COMMAND", layout="wide", initial_sidebar_state="expanded")
-
-# Custom CSS for a "Cyber/Military" Look
-st.markdown("""
-    <style>
-    .main { background-color: #0b0d14; }
-    .stMetric { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 15px; }
-    div[data-testid="stExpander"] { border: 1px solid #30363d; background-color: #0d1117; }
-    .stButton>button { width: 100%; background-color: #238636; color: white; border: none; font-weight: bold; height: 3em; }
-    .stButton>button:hover { background-color: #2ea043; border: 1px solid white; }
-    </style>
-    """, unsafe_allow_html=True)
+# --- 1. SYSTEM CONFIG ---
+st.set_page_config(page_title="LEO POSG: Escalation Dynamics", layout="wide")
+st.markdown("""<style>.main { background-color: #0d1117; color: #c9d1d9; }</style>""", unsafe_allow_html=True)
 
 # --- 2. GAME STATE ---
-if 'gs' not in st.session_state:
-    st.session_state.gs = {
-        'turn': 1, 'budget': 5000, 'debris': 0.32, 'intel': 0, 
-        'history': [], 'last_outcome': "Systems Ready. Awaiting Input."
+if 'posg' not in st.session_state:
+    st.session_state.posg = {
+        'C': 0.25, 'E': 0.15, 'I': 0.10, 'history': [], 'turn': 1
     }
-gs = st.session_state.gs
+p = st.session_state.posg
 
-# --- 3. UI: TOP NAVIGATION (The "HUD") ---
-st.title("🛰️ LEO COMMAND | Tactical Interface")
-h1, h2, h3, h4 = st.columns(4)
-h1.metric("Orbital Density (K)", f"{gs['debris']:.2%}", delta="CRITICAL" if gs['debris'] > 0.7 else None)
-h2.metric("Treasury", f"${gs['budget']:,}")
-h3.metric("Intel Level", f"{gs['intel']} XP")
-h4.metric("Cycle", f"T-{gs['turn']}")
+# --- 3. THE HUD ---
+st.title("🛰️ Sub-Game II: Escalation Dynamics")
+st.write("Modeling the 'Game of Chicken' with Bayesian Signalling under AI Acceleration.")
+
+m1, m2, m3 = st.columns(3)
+m1.metric("Congestion ($C$)", f"{p['C']:.2f}")
+m2.metric("Escalation Risk ($E$)", f"{p['E']:.2f}")
+m3.metric("Information Tax ($I$)", f"{p['I']:.2f}")
 st.divider()
 
-# --- 4. UX: THE NESTED CHOICE FLOW ---
-# We use two main columns: THE ACTION and THE FEEDBACK
-col_action, col_visual = st.columns([3, 2], gap="large")
+# --- 4. THE DECISION MATRIX ---
+col_strat, col_logic = st.columns([1, 2], gap="large")
 
-with col_action:
-    st.subheader("🛠️ Deployment Sequence")
+with col_strat:
+    st.subheader("📡 Bayesian Signalling Profile")
     
-    # LEVEL 1: OBJECTIVE
-    mission = st.selectbox("SEQUENCE 01: Select Strategic Objective", 
-        ["Commercial Constellation Expansion", "Classified Military Reconnaissance", "Science & Climate Monitoring"])
+    # 1. Type Selection (The Player's Secret 'State')
+    my_type = st.radio("Your Strategic Type ($\Theta$)", 
+                       ["Cooperative (Yield-prone)", "Assertive (Chicken-prone)"])
     
-    # LEVEL 2: EXECUTION (Changes based on Level 1)
-    st.write("")
-    if mission == "Commercial Constellation Expansion":
-        st.info("Commercial targets focus on revenue. High volume, low precision.")
-        strategy = st.radio("SEQUENCE 02: Launch Profile", ["Vanguard (High Density/Low Cost)", "Sustainable (Low Density/High Cost)"])
-    elif mission == "Classified Military Reconnaissance":
-        st.error("WARNING: Interacting with Military assets triggers high Legal Heat.")
-        strategy = st.radio("SEQUENCE 02: Approach Vector", ["Distant Tracking", "Aggressive RPO (Proximity)"])
-    else:
-        st.success("Scientific missions reduce global Debris but generate no Profit.")
-        strategy = st.radio("SEQUENCE 02: Mission Goal", ["Atmospheric Scan", "Active Debris Cleanup"])
+    # 2. Signaling Choice (The Observable Action)
+    signal_fidelity = st.select_slider("Signal Fidelity ($\sigma$)", 
+                                       options=["Transparent", "Ambiguous", "Deceptive"])
+    
+    # 3. AI OODA Loop (The Accelerant)
+    ai_enabled = st.toggle("Enable AI-Enhanced Decision Support", value=True)
+    
+    execute = st.button("EXECUTE MANEUVER (T+1)", type="primary")
 
-    # LEVEL 3: SIGNAL PROTOCOL (The POSG Attribution Void)
-    st.write("")
-    telemetry = st.select_slider("SEQUENCE 03: Telemetry Protocol", 
-        options=["Open (Auditable)", "Encrypted", "Quantum Shadow (Ambiguous)"],
-        help="Ambiguous signals mask your 'Fault' from International Courts.")
-
-    # THE TRIGGER
-    if st.button("INITIATE MANEUVER"):
-        # Logic - Simplified for brevity
-        gs['turn'] += 1
-        profit = 1200 if "Vanguard" in strategy or "Aggressive" in strategy else 300
-        cost = 800 if "Sustainable" in strategy or "Cleanup" in strategy else 100
-        
-        # Attribution Void Math
-        pa = 0.05 if telemetry == "Quantum Shadow (Ambiguous)" else 0.90
-        risk = 0.10 if "Aggressive" in strategy or "Vanguard" in strategy else 0.02
-        if "Cleanup" in strategy: risk = -0.05
-        
-        # Update Stats
-        gs['budget'] += (profit - cost)
-        gs['debris'] = max(0.05, min(1.0, gs['debris'] + risk))
-        
-        # Result Narrative
-        if pa < 0.1 and risk > 0.05:
-            gs['last_outcome'] = "👤 GHOST MOVE: Collision risk detected, but the Attribution Void prevented identification. No fines issued."
-        elif pa > 0.5 and risk > 0.05:
-            fine = 1500
-            gs['budget'] -= fine
-            gs['last_outcome'] = f"⚖️ LEGAL BREACH: Your transparent signal allowed a court to assign Fault. Fine: ${fine}."
+# --- 5. THE ESCALATION ENGINE ---
+if execute:
+    # Bayesian Logic: Adversary updates beliefs based on sigma
+    adversary_belief = 0.8 if signal_fidelity == "Transparent" else 0.2
+    
+    # Game of Chicken Outcome Logic
+    # If both 'Assertive' (Hidden or Real) -> Escalation Spikes
+    escalation_spike = 0.0
+    if my_type == "Assertive (Chicken-prone)":
+        if signal_fidelity != "Transparent":
+            escalation_spike = 0.25  # High risk of "Collision of Wills"
         else:
-            gs['last_outcome'] = "✅ MISSION SUCCESS: Maneuver completed within legal parameters."
+            escalation_spike = 0.10  # Known deterrence
+    else:
+        escalation_spike = 0.02 # Defensive yield
         
-        gs['history'].insert(0, f"T-{gs['turn']-1}: {gs['last_outcome']}")
+    # AI Acceleration Factor
+    if ai_enabled:
+        escalation_spike *= 1.5  # Compressed OODA loops reduce reaction time
+        
+    # Update Coupled Variables
+    p['E'] = min(1.0, p['E'] + escalation_spike)
+    p['I'] = min(1.0, p['E'] * 0.6) # Info tax scales with uncertainty and risk
+    p['C'] += 0.03 # Natural growth
+    
+    p['history'].append({
+        "Turn": p['turn'], "E": p['E'], "I": p['I'], "Belief": adversary_belief
+    })
+    p['turn'] += 1
 
-with col_visual:
-    st.subheader("📡 Real-Time Situational Awareness")
-    
-    # UX: STATUS MESSAGE BOX
-    st.code(gs['last_outcome'], language="markdown")
-    
-    # UX: THE "REAL-WORLD" CHART
-    chart_data = pd.DataFrame([random.uniform(gs['debris']-0.05, gs['debris']+0.05) for _ in range(20)], columns=["Traffic Density"])
-    st.area_chart(chart_data, use_container_width=True)
-    
-    # UX: RECENT HISTORY LOG
-    with st.expander("Mission Logs", expanded=True):
-        for log in gs['history'][:5]:
-            st.caption(log)
+# --- 6. VISUALIZING THE EVOLUTION ---
+with col_logic:
+    st.subheader("📉 Bayesian Update & Escalation Trend")
+    if p['history']:
+        df = pd.DataFrame(p['history'])
+        st.line_chart(df.set_index("Turn")[["E", "I"]])
+        
+        # Scenario Feedback
+        if p['E'] > 0.6:
+            st.error("🚨 ESCALATION CRITICAL: Maneuver interpreted as 'Hostile Intent'. Tactical warning thresholds breached.")
+        elif signal_fidelity == "Ambiguous":
+            st.warning("🕵️ ATTRIBUTION VOID: Adversary cannot distinguish between 'Mechanical Failure' and 'Strategic Defection'.")
+        else:
+            st.success("✅ STABLE: Signal fidelity maintains the 'Deterrence Equilibrium'.")
+    else:
+        st.info("Select your strategic profile and execute the first maneuver.")
 
-# --- 5. THEORY: THE "SOVEREIGNTY TRAP" ---
+# --- 7. THEORETICAL SUMMARY ---
 st.divider()
-with st.expander("📚 THEORY OVERVIEW: Why this UI reflects your Thesis"):
+with st.expander("📚 Theoretical Framework: Chicken + Bayesian Signalling"):
     st.write("""
-    The UI is designed to force **Choice-Over-Choice**. 
+    **The Game of Chicken:** In LEO, two actors approaching a 'Conjunction' are in a Game of Chicken. 
+    The one who 'Yields' (maneuvers) loses operational value ($V$). 
     
-    1. **Asymmetric Information:** The 'Quantum Shadow' protocol represents the **Attribution Void**. You chose to hide your 'Fault' ($f$), which is the only way to play aggressively around Military assets.
-    2. **Stochastic Transition:** The 'Traffic Density' chart shows how the orbit ($K$) evolves based on your private moves.
-    3. **The Trap:** Notice that your Budget grows fastest when you use 'Shadow' protocols. The game (and LEO) rewards defection over cooperation.
+    **Bayesian Signalling:** Because you can't see the adversary's 'Type' ($\Theta$), you rely on signals ($\sigma$). 
+    * **Transparent signals** reduce $I$ (Info Tax) but make you predictable.
+    * **Ambiguous signals** create an **Attribution Void**, which hides your defection but causes $E$ (Escalation) to spiral as the adversary assumes the worst-case 'Type'.
+    
+    **AI Acceleration:** AI compresses the decision window. When OODA loops are faster than human diplomacy, 
+    the probability of a 'Chicken' collision increases, driving the system toward a **Pareto-inefficient equilibrium**.
     """)
 
-# --- 6. GAME OVER ---
-if gs['debris'] >= 0.90:
-    st.error("### 💥 KESSLER SYNDROME INITIATED. LEO IS CLOSED.")
-    if st.button("RESET SYSTEM"): st.session_state.clear(); st.rerun()
+if p['E'] >= 0.90:
+    st.error("### 💥 KINETIC EXCHANGE: Escalation has reached terminal levels. Orbital access lost.")
+    if st.button("Reset Simulation"): st.session_state.clear(); st.rerun()
