@@ -1,118 +1,141 @@
-import streamlit as st
-import random
-import pandas as pd
+import React, { useState } from "react";
 
-# --- UI & THEME ---
-st.set_page_config(page_title="LEO Master: Decision Tree", layout="wide")
-st.markdown("""<style>.stRadio>label { font-weight: bold; color: #4CAF50; }</style>""", unsafe_allow_html=True)
+export default function LeoGame() {
+  const [debris, setDebris] = useState(0.2);
+  const [score, setScore] = useState(0);
+  const [belief, setBelief] = useState(0.5); // probability opponent is hostile
+  const [log, setLog] = useState([]);
+  const [phase, setPhase] = useState("decision");
+  const [lastCollision, setLastCollision] = useState(false);
+  const [aiMode, setAiMode] = useState(false);
 
-# --- INITIALIZE STATE ---
-if 'game_state' not in st.session_state:
-    st.session_state.game_state = {
-        'k': 0.15, 'budget': 2500, 'intel': 10, 'turn': 1,
-        'history': [], 'alerts': ["🛰️ Orbital Slot 7-Alpha Secured. Awaiting orders."]
+  function randomOpponentType() {
+    return Math.random() < 0.5 ? "cooperative" : "aggressive";
+  }
+
+  function playTurn(action) {
+    let opponentType = randomOpponentType();
+    let newDebris = debris;
+    let newScore = score;
+    let message = `You chose ${action}. Opponent is hidden.`;
+
+    // Subgame II: Bayesian Chicken
+    if (action === "persist") {
+      newScore += 1;
+      newDebris += 0.05;
+      if (opponentType === "aggressive") {
+        message += " Opponent also persists → escalation risk!";
+        if (Math.random() < 0.3) {
+          message += " ⚠️ Collision!";
+          newDebris += 0.3;
+          setLastCollision(true);
+          setPhase("attribution");
+        }
+      }
+    } else {
+      message += " You evaded (lost strategic value).";
+      newScore -= 0.5;
     }
 
-gs = st.session_state.game_state
+    // Subgame I: Responsibility / risky ops
+    if (Math.random() < newDebris) {
+      message += " Random debris interaction occurred.";
+      newDebris += 0.1;
+    }
 
-# --- HEADER ---
-st.title("🛰️ LEO MASTER: THE SOVEREIGNTY TRAP")
-st.write(f"**Turn:** {gs['turn']} | **Budget:** ${gs['budget']} | **Orbital Debris (K):** {gs['k']:.2%}")
-st.divider()
+    // Belief update (simple heuristic)
+    let newBelief = belief;
+    if (action === "persist") newBelief += 0.1;
+    else newBelief -= 0.05;
 
-# --- STEP 1: FACTION SELECTION (Only on Turn 1) ---
-if gs['turn'] == 1:
-    faction = st.selectbox("Choose Your Organization", 
-        ["Global Constellation Corp", "National Defense Space Command", "Balkan Research Consortium"])
-    st.info(f"Welcome, Director of {faction}. Your choices today define the orbit of tomorrow.")
+    setBelief(Math.min(Math.max(newBelief, 0), 1));
+    setDebris(Math.min(newDebris, 1));
+    setScore(newScore);
+    setLog([...log, message]);
 
-# --- STEP 2: MULTI-LEVEL DECISION TREE ---
-st.header("🛠️ Tactical Command")
+    if (!lastCollision) {
+      setPhase("decision");
+    }
+  }
 
-# CHOICE LEVEL 1: THE MISSION
-mission = st.selectbox("Phase 1: Select Mission Objective", 
-    ["Expand Network Coverage", "Perform Proximity Inspection (RPO)", "Emergency Collision Avoidance"])
+  function attributionDecision(verify) {
+    let message = "Attribution phase: ";
+    let probAttribution = verify === "high" ? 0.6 : 0.2;
 
-# CHOICE LEVEL 2: THE EXECUTION (Changes based on Phase 1)
-st.subheader("Phase 2: Execution Strategy")
-if mission == "Expand Network Coverage":
-    exec_strategy = st.radio("How will you deploy?", 
-        ["Safe Orbit (High Cost, Low Risk)", "Aggressive Stacking (Low Cost, High Debris)"])
-elif mission == "Perform Proximity Inspection (RPO)":
-    exec_strategy = st.radio("How will you approach the target?", 
-        ["Public Observation (Scientific)", "Shadow Maneuver (Intelligence Gathering)"])
-else: # Collision Avoidance
-    exec_strategy = st.radio("Maneuver Priority?", 
-        ["Full Burn (Save Satellite, Export Debris)", "Controlled Drift (Risk Satellite, Save Orbit)"])
+    if (aiMode) probAttribution *= 0.5; // AI reduces attribution
 
-# CHOICE LEVEL 3: THE LEGAL SHIELD (The Attribution Void)
-st.subheader("Phase 3: Telemetry Protocol")
-telemetry = st.radio("Signal Encryption Level", 
-    ["Open Broadcast (Auditable)", "Quantum Masking (Ambiguous/Unobservable)"],
-    help="Ambiguous signals make it impossible for international courts to prove your 'Fault'.")
+    if (Math.random() < probAttribution) {
+      message += "Fault proven. Penalty applied.";
+      setScore(score - 2);
+    } else {
+      message += "Attribution failed. No liability.";
+    }
 
-# --- EXECUTE TURN ---
-if st.button("🚀 INITIATE MANEUVER", type="primary"):
-    gs['turn'] += 1
-    
-    # Logic Calculations
-    revenue = 1000 if "Aggressive" in exec_strategy or "Shadow" in exec_strategy else 400
-    risk_inc = 0.08 if "Aggressive" in exec_strategy or "Full Burn" in exec_strategy else 0.02
-    
-    # The "Attribution Void" Logic
-    pa = 0.05 if telemetry == "Quantum Masking (Ambiguous/Unobservable)" else 0.90
-    
-    # Apply results
-    gs['budget'] += revenue
-    gs['k'] = min(1.0, gs['k'] + risk_inc)
-    
-    # Narrative Outcome
-    outcome = f"Turn {gs['turn']-1}: {mission} via {exec_strategy} complete."
-    if telemetry == "Quantum Masking (Ambiguous/Unobservable)":
-        outcome += " 🛡️ ATTRIBUTION VOID ACTIVE: You are immune to legal claims."
-    else:
-        outcome += " ⚖️ AUDITABLE: You are legally vulnerable if a collision occurs."
-    
-    gs['alerts'].insert(0, outcome)
+    setLog((prev) => [...prev, message]);
+    setPhase("decision");
+    setLastCollision(false);
+  }
 
-# --- RESULTS & VISUALS ---
-col1, col2 = st.columns([2, 1])
+  return (
+    <div className="p-6 max-w-2xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">🚀 LEO POSG Game</h1>
 
-with col1:
-    st.subheader("📊 System Health & Trends")
-    # Simple growth chart
-    chart_data = pd.DataFrame({'Debris Density': [0.15, gs['k']]})
-    st.line_chart(chart_data)
-    
-with col2:
-    st.subheader("📜 Comms Log")
-    for alert in gs['alerts'][:5]:
-        st.write(alert)
+      <div className="mb-4">
+        <p>Debris (K): {debris.toFixed(2)}</p>
+        <p>Score (Uᵢ): {score.toFixed(2)}</p>
+        <p>Belief opponent hostile (μ): {belief.toFixed(2)}</p>
+      </div>
 
-# --- THE "HIDDEN CHOICE" (Random Events) ---
-if gs['k'] > 0.40:
-    st.warning("🚨 **Congestion Alert:** A minor collision has occurred in a neighboring sector!")
-    investigate = st.selectbox("Reaction?", ["Ignore (Save Budget)", "Fund Cleanup (-$500)", "Blame Competitor (Requires Intel)"])
-    if investigate == "Fund Cleanup (-$500)":
-        gs['budget'] -= 500
-        gs['k'] -= 0.05
-        st.success("You spent funds to stabilize the orbit.")
+      <div className="mb-4">
+        <label className="mr-2">AI Acceleration</label>
+        <input
+          type="checkbox"
+          checked={aiMode}
+          onChange={() => setAiMode(!aiMode)}
+        />
+      </div>
 
-# --- GAME OVER ---
-if gs['k'] >= 0.85:
-    st.error("### 💥 KESSLER SYNDROME REACHED. THE ORBIT IS LOST.")
-    if st.button("Restart Simulation"):
-        st.session_state.clear()
-        st.rerun()
+      {phase === "decision" && (
+        <div className="flex gap-4 mb-4">
+          <button
+            onClick={() => playTurn("persist")}
+            className="bg-red-500 text-white px-4 py-2 rounded"
+          >
+            Persist (Aggressive)
+          </button>
 
-# --- THE THEORY (For your thesis) ---
-with st.expander("📚 Behind the Scenes: The POSG Math"):
-    st.write("""
-    This simulation demonstrates **Sequential Decision Making**. 
-    
-    By choosing **Aggressive Stacking** + **Quantum Masking**, you maximize your $V$ (Value) 
-    while driving your $P_a$ (Probability of Attribution) to near zero. 
-    
-    In a 'Choices over Choices' environment, rational actors will always nest their 
-    risky physical moves inside an 'Ambiguous' legal signal to avoid the Liability Convention.
-    """)
+          <button
+            onClick={() => playTurn("evade")}
+            className="bg-green-500 text-white px-4 py-2 rounded"
+          >
+            Evade (Safe)
+          </button>
+        </div>
+      )}
+
+      {phase === "attribution" && (
+        <div className="flex gap-4 mb-4">
+          <button
+            onClick={() => attributionDecision("high")}
+            className="bg-blue-500 text-white px-4 py-2 rounded"
+          >
+            High Verification (costly)
+          </button>
+
+          <button
+            onClick={() => attributionDecision("low")}
+            className="bg-gray-500 text-white px-4 py-2 rounded"
+          >
+            Low Verification
+          </button>
+        </div>
+      )}
+
+      <div className="bg-gray-100 p-3 rounded h-60 overflow-auto">
+        {log.map((entry, i) => (
+          <div key={i}>{entry}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
